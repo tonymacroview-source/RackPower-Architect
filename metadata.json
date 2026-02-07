@@ -1,0 +1,5 @@
+{
+  "name": "PDU Power Planner",
+  "description": "An intelligent power distribution planning tool that optimizes PDU usage based on device power requirements and redundancy constraints.",
+  "requestFramePermissions": []
+}
