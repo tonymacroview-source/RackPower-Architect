@@ -15,6 +15,10 @@ interface Props {
   pduPhysicalWidth: number; // in cm
   pduCordLength: number; // in m
   rackSize: number;
+  voltage: number;
+  circuitCount: number;
+  circuitRating: number;
+  isThreePhase: boolean;
 }
 
 const U_HEIGHT_PX = 30; // Reduced from 45
@@ -34,6 +38,9 @@ const PDU_FOOTER_H = 40;
 const SOCKET_H = 14; 
 const SOCKET_GAP = 4;
 const SOCKET_PADDING = 8;
+
+const CIRCUIT_HEADER_HEIGHT = 20;
+const CIRCUIT_HEADER_MARGIN = 4;
 
 // Updated Styles for White Background (Paper Mode)
 const THEME = {
@@ -119,7 +126,11 @@ const RackVisualizer: React.FC<Props> = ({
   pduPhysicalHeight,
   pduPhysicalWidth,
   pduCordLength,
-  rackSize
+  rackSize,
+  voltage,
+  circuitCount,
+  circuitRating,
+  isThreePhase
 }) => {
   const [draggedDevice, setDraggedDevice] = useState<string | null>(null);
   const [draggedCable, setDraggedCable] = useState<{deviceId: string, psuIndex: number} | null>(null);
@@ -142,13 +153,31 @@ const RackVisualizer: React.FC<Props> = ({
 
   const getPDUHeight = (socketCount: number) => {
       const contentH = (socketCount * SOCKET_H) + ((socketCount - 1) * SOCKET_GAP);
-      return PDU_HEADER_H + SOCKET_PADDING + contentH + SOCKET_PADDING + PDU_FOOTER_H;
+      
+      // Calculate Circuit Header Overhead
+      const socketsPerCircuit = Math.ceil(socketCount / circuitCount);
+      let headerCount = 0;
+      for(let i=0; i<socketCount; i++) {
+         if (i === 0 || (i > 0 && i % socketsPerCircuit === 0)) {
+             headerCount++;
+         }
+      }
+      
+      const headersH = headerCount * (CIRCUIT_HEADER_HEIGHT + CIRCUIT_HEADER_MARGIN);
+
+      return PDU_HEADER_H + SOCKET_PADDING + contentH + headersH + SOCKET_PADDING + PDU_FOOTER_H;
   };
 
   const getGroupStartY = (groupPdus: PDUConfig[]) => {
       if (groupPdus.length === 0) return 0;
       const totalH = groupPdus.reduce((sum, p) => sum + getPDUHeight(p.socketCount + (p.secondarySocketCount || 0)), 0) + ((groupPdus.length - 1) * PDU_VERTICAL_GAP);
       return Math.max(0, (rackHeightPx - totalH) / 2);
+  };
+
+  // Helper for container sizing
+  const getGroupTotalHeight = (groupPdus: PDUConfig[]) => {
+      if (groupPdus.length === 0) return 0;
+      return groupPdus.reduce((sum, p) => sum + getPDUHeight(p.socketCount + (p.secondarySocketCount || 0)), 0) + ((groupPdus.length - 1) * PDU_VERTICAL_GAP);
   };
 
   const startYA = getGroupStartY(pdusA);
@@ -283,23 +312,20 @@ const RackVisualizer: React.FC<Props> = ({
                                 <td className="p-2 font-mono text-slate-800">{pduPhysicalWidth} cm</td>
                             </tr>
                             <tr>
-                                <td className="p-2 font-semibold text-slate-600">Cord Length</td>
-                                <td className="p-2 font-mono text-slate-800">{pduCordLength} m</td>
-                            </tr>
-                            <tr>
                                 <td className="p-2 font-semibold text-slate-600">Max Capacity</td>
                                 <td className="p-2 font-mono text-slate-800">{primaryPDU ? primaryPDU.powerCapacity : 0} W</td>
                             </tr>
+                             <tr>
+                                <td className="p-2 font-semibold text-slate-600">Config</td>
+                                <td className="p-2 font-mono text-slate-800">{circuitCount}x {circuitRating}A Circuits</td>
+                            </tr>
+                             <tr>
+                                <td className="p-2 font-semibold text-slate-600">Phase</td>
+                                <td className="p-2 font-mono text-slate-800">{isThreePhase ? '3-Phase' : 'Single Phase'}</td>
+                            </tr>
                             <tr>
-                                <td className="p-2 font-semibold text-slate-600">Outlets</td>
-                                <td className="p-2 font-mono text-slate-800">
-                                    {primaryPDU ? (
-                                        <>
-                                            {primaryPDU.socketCount}x{primaryPDU.socketType}
-                                            {primaryPDU.secondarySocketCount ? ` + ${primaryPDU.secondarySocketCount}x${primaryPDU.secondarySocketType}` : ''}
-                                        </>
-                                    ) : '-'}
-                                </td>
+                                <td className="p-2 font-semibold text-slate-600">Voltage</td>
+                                <td className="p-2 font-mono text-slate-800">{voltage} V</td>
                             </tr>
                         </tbody>
                     </table>
@@ -373,15 +399,8 @@ const RackVisualizer: React.FC<Props> = ({
                                 <td className="p-2 font-semibold text-slate-600">Standard Unit</td>
                                 <td className="p-2 font-mono text-emerald-600 font-bold">{recommendedSize.toLocaleString()} VA</td>
                             </tr>
-                             <tr>
-                                <td className="p-2 font-semibold text-slate-600">Min. Battery Runtime</td>
-                                <td className="p-2 font-mono text-slate-800">5 min @ Max Load</td>
-                            </tr>
                         </tbody>
                     </table>
-                     <p className="text-[10px] text-slate-400 mt-1 px-1 italic">
-                        * Recommendation based on Total Max Load. For N+1, ensure 2x units of this capacity.
-                    </p>
                 </div>
 
                 <div className="mt-auto pt-8 text-xs text-slate-400">
@@ -415,17 +434,12 @@ const RackVisualizer: React.FC<Props> = ({
             {/* Device Info */}
             <div className="flex-1 flex items-center gap-2 overflow-hidden pointer-events-none z-10 mr-2 min-w-0 h-full">
                 <span className={`${THEME.textDim} font-mono text-[10px] w-5 shrink-0 text-right`}>{u}</span>
-                
-                {/* Single Row Layout */}
                 <div className="flex items-center justify-between w-full overflow-hidden h-full pr-1">
-                    {/* Device Name */}
                     <div className="flex items-center h-full min-w-0 overflow-hidden flex-1">
                         <span className={`text-xs ${THEME.text} font-bold truncate leading-tight`} title={device.name}>
                             {device.name}
                         </span>
                     </div>
-                    
-                    {/* Power Ratings & U Height - Aligned Right */}
                     <div className="flex gap-2 text-[10px] items-center shrink-0 ml-2 h-full">
                         <span className="text-blue-600 whitespace-nowrap leading-tight" title="Typical Power">
                             Typ:{Math.round(device.typicalPower)}
@@ -481,8 +495,7 @@ const RackVisualizer: React.FC<Props> = ({
     return slots;
   };
 
-  const renderSocket = (pdu: PDUConfig, index: number) => {
-      // Find occupancy and details for dragging
+  const renderSocket = (pdu: PDUConfig, index: number, circuitIdx: number, isCircuitOverloaded: boolean, isLast: boolean) => {
       let connectedDevice: Device | undefined;
       let connectedPsuIndex: number = -1;
 
@@ -500,9 +513,6 @@ const RackVisualizer: React.FC<Props> = ({
       const isOccupied = !!connectedDevice;
       const isHovered = hoveredSocket?.pduId === pdu.id && hoveredSocket?.index === index;
       
-      // Determine Type based on index
-      // 0 to socketCount-1 = Primary
-      // socketCount to Total-1 = Secondary
       const isSecondary = index >= pdu.socketCount;
       const currentType = isSecondary ? (pdu.secondarySocketType || 'C19') : pdu.socketType;
 
@@ -518,9 +528,11 @@ const RackVisualizer: React.FC<Props> = ({
             onDragOver={(e) => handleSocketDragOver(e, pdu.id, index, isOccupied)}
             onDragLeave={() => setHoveredSocket(null)}
             onDrop={(e) => handleSocketDrop(e, pdu.id, index, isOccupied)}
-            className={`flex items-center flex-shrink-0 ${isOccupied ? 'cursor-grab active:cursor-grabbing' : ''}`}
-            style={{ marginBottom: `${SOCKET_GAP}px` }}
+            className={`flex items-center flex-shrink-0 relative ${isOccupied ? 'cursor-grab active:cursor-grabbing' : ''} ${isCircuitOverloaded ? 'bg-red-900/10 rounded px-1 -mx-1' : ''}`}
+            style={{ marginBottom: `${isLast ? 0 : SOCKET_GAP}px` }}
         >
+           {/* Circuit Warning Marker */}
+           {isCircuitOverloaded && <div className="absolute -left-2 top-1 w-1 h-1 bg-red-500 rounded-full"></div>}
            <SocketIcon type={currentType} used={isOccupied} label={`${index+1}`} hovered={isHovered} />
         </div>
       );
@@ -534,7 +546,6 @@ const RackVisualizer: React.FC<Props> = ({
         if (!d.uPosition) return;
 
         const uTopY = (rackSize - d.uPosition) * U_HEIGHT_PX;
-        // Added TOP_OFFSET here to match Rack vertical shift
         const deviceCenterY = RACK_HEADER_HEIGHT + uTopY + (d.uHeight * U_HEIGHT_PX / 2) + TOP_OFFSET;
 
         Object.entries(d.psuConnections).forEach(([psuIdxStr, c]) => {
@@ -545,7 +556,20 @@ const RackVisualizer: React.FC<Props> = ({
             if (!pdu) return;
 
             const pduRect = getPDURect(pdu);
-            const socketRelativeY = PDU_HEADER_H + SOCKET_PADDING + (conn.socketIndex * (SOCKET_H + SOCKET_GAP)) + (SOCKET_H / 2);
+            
+            const totalSockets = pdu.socketCount + (pdu.secondarySocketCount || 0);
+            const socketsPerCircuit = Math.ceil(totalSockets / circuitCount);
+            
+            // Fixed Wire Geometry Logic to account for Circuit Headers
+            // Header Logic matches `renderSocket` loop
+            const headerCount = Math.floor(conn.socketIndex / socketsPerCircuit) + 1;
+            const headerOffset = headerCount * (CIRCUIT_HEADER_HEIGHT + CIRCUIT_HEADER_MARGIN);
+
+            const socketRelativeY = PDU_HEADER_H + SOCKET_PADDING + 
+                                    (conn.socketIndex * (SOCKET_H + SOCKET_GAP)) + 
+                                    headerOffset + 
+                                    (SOCKET_H / 2);
+            
             const socketY = pduRect.y + socketRelativeY;
             const pduCenterX = pduRect.x + (pduRect.width / 2);
             const deviceX = pdu.side === 'A' ? rackLeftX : rackRightX;
@@ -575,13 +599,20 @@ const RackVisualizer: React.FC<Props> = ({
     });
 
     return (
-        <svg className="absolute inset-0 w-full h-full pointer-events-none z-50" width={totalWidth} height={rackHeightPx + 200}>
+        <svg className="absolute inset-0 w-full h-full pointer-events-none z-50" width={totalWidth} height={containerHeight}>
             {lines}
         </svg>
     );
   };
 
-  const containerHeight = Math.max(rackHeightPx + 200, (unmountedDevices.length > 0 ? rackHeightPx + 400 : rackHeightPx + 200));
+  const pduHeightA = getGroupTotalHeight(pdusA);
+  const pduHeightB = getGroupTotalHeight(pdusB);
+  const maxContentHeight = Math.max(rackHeightPx, pduHeightA, pduHeightB);
+
+  const containerHeight = Math.max(
+      maxContentHeight + TOP_OFFSET + 100, 
+      (unmountedDevices.length > 0 ? rackHeightPx + 400 : rackHeightPx + 200)
+  );
 
   return (
     <div 
@@ -612,9 +643,26 @@ const RackVisualizer: React.FC<Props> = ({
           const load = pduLoads[pdu.id];
           const effectiveCap = pdu.powerCapacity * powerFactor * (safetyMargin / 100);
           const isOverloaded = load.max > effectiveCap;
-          const pct = Math.min(100, (load.max / effectiveCap) * 100);
+          const pct = Math.min(100, (load.max / pdu.powerCapacity) * 100);
 
           const totalSockets = pdu.socketCount + (pdu.secondarySocketCount || 0);
+          const socketsPerCircuit = Math.ceil(totalSockets / circuitCount);
+          
+          // Calculate Circuit Loads
+          const circuitLoads: number[] = new Array(circuitCount).fill(0);
+          
+          devices.forEach(d => {
+             Object.entries(d.psuConnections).forEach(([key, val]) => {
+                const conn = val as PSUConnection | null;
+                if (conn && conn.pduId === pdu.id) {
+                     // Determine circuit
+                     const cIdx = Math.floor(conn.socketIndex / socketsPerCircuit);
+                     if (cIdx < circuitCount) {
+                         circuitLoads[cIdx] += d.powerRatingPerDevice;
+                     }
+                }
+             });
+          });
 
           return (
             <React.Fragment key={pdu.id}>
@@ -638,8 +686,45 @@ const RackVisualizer: React.FC<Props> = ({
                         </div>
                         
                         {/* Sockets */}
-                        <div className="flex-1 w-full flex flex-col items-center" style={{ padding: `${SOCKET_PADDING}px 0` }}>
-                            {Array.from({ length: totalSockets }).map((_, i) => renderSocket(pdu, i))}
+                        <div className="flex-1 w-full flex flex-col items-center relative" style={{ padding: `${SOCKET_PADDING}px 0` }}>
+                            {Array.from({ length: totalSockets }).map((_, i) => {
+                                const cIdx = Math.floor(i / socketsPerCircuit);
+                                const cLoadWatts = circuitLoads[cIdx] || 0;
+                                // Convert W -> VA -> Amps
+                                const cAmps = (cLoadWatts / powerFactor) / voltage;
+                                const isCOver = cAmps > circuitRating;
+                                
+                                const isStartOfCircuit = i > 0 && i % socketsPerCircuit === 0;
+                                const isFirst = i === 0;
+                                const label = isThreePhase ? `L${(cIdx % 3) + 1}` : `C${cIdx + 1}`;
+                                const cPct = Math.min(100, (cAmps / circuitRating) * 100);
+                                const barColor = cAmps > circuitRating ? 'bg-red-500' : (cPct > 80 ? 'bg-amber-500' : 'bg-emerald-500');
+
+                                return (
+                                    <React.Fragment key={i}>
+                                        {(isStartOfCircuit || isFirst) && (
+                                            <div 
+                                                className="w-full mb-1 flex flex-col justify-center bg-slate-900 border-y border-slate-700 relative overflow-hidden" 
+                                                style={{ height: `${CIRCUIT_HEADER_HEIGHT}px` }}
+                                            >
+                                                {/* Text Info */}
+                                                <div className="w-full flex justify-between px-1.5 items-center relative z-10 h-full pb-[2px]">
+                                                    <span className="text-[8px] font-bold text-slate-300">{label}</span>
+                                                    <div className={`text-[7px] font-mono ${cAmps > circuitRating ? 'text-red-400 font-bold' : 'text-slate-400'}`}>
+                                                        {Math.round(cLoadWatts)}W
+                                                    </div>
+                                                </div>
+                                                
+                                                {/* Progress Bar */}
+                                                <div className="absolute bottom-0 left-0 w-full h-[2px] bg-slate-800">
+                                                    <div className={`h-full transition-all duration-300 ${barColor}`} style={{ width: `${cPct}%` }}></div>
+                                                </div>
+                                            </div>
+                                        )}
+                                        {renderSocket(pdu, i, cIdx, isCOver, i === totalSockets - 1)}
+                                    </React.Fragment>
+                                );
+                            })}
                         </div>
                         
                         {/* Footer / Load Bar */}
@@ -651,6 +736,13 @@ const RackVisualizer: React.FC<Props> = ({
                                 <div className={`h-full ${isOverloaded ? 'bg-red-500' : (pdu.side === 'A' ? 'bg-blue-500' : 'bg-red-500')}`} style={{ width: `${pct}%` }}></div>
                             </div>
                             <div className={`text-[9px] text-center ${isOverloaded ? 'text-red-400' : 'text-slate-400'}`}>{Math.round(load.max)}W</div>
+                            
+                            {/* Circuit Check Tooltip Logic could go here, but purely visual for now */}
+                            {circuitLoads.some(l => ((l/powerFactor)/voltage) > circuitRating) && (
+                                <div className="text-[8px] text-center text-red-500 font-bold bg-slate-800 rounded px-1 absolute -bottom-4 w-full">
+                                    Breaker!
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
