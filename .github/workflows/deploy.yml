@@ -31,8 +31,5 @@ jobs:
           username: ${{ secrets.HOSTINGER_FTP_USERNAME }}
           password: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
           local-dir: ./dist/
-          # FORCE ROOT: Upload to the absolute root of the FTP user
-          server-dir: /
-          protocol: ftps
-          # This will delete ANY file on the server that is not in your project
-          dangerous-clean-slate: true
+          port: 22
+          protocol: sftp
