@@ -20,20 +20,20 @@ jobs:
       
       - name: Install dependencies
         run: |
+          cd RackPower-Architect
           npm install
       
       - name: Build the application
         run: |
+          cd RackPower-Architect
           npm run build
       
-      - name: Upload to Hostinger via FTP
+      - name: Upload to Hostinger via SFTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
           server: ${{ secrets.HOSTINGER_FTP_SERVER }}
           username: ${{ secrets.HOSTINGER_FTP_USERNAME }}
           password: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
-          local-dir: ./dist/
-          port: 21
-          # Uncomment the following line for SFTP deployment
-          # port: 22
-          # protocol: sftp
+          local-dir: RackPower-Architect/dist/
+          port: 22
+          protocol: sftp
