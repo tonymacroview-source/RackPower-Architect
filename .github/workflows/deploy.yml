@@ -24,7 +24,6 @@ jobs:
       
       - name: Build the application
         run: |
-          cd RackPower-Architect
           npm run build
       
       - name: Upload to Hostinger via FTP
