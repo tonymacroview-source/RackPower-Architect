@@ -19,6 +19,7 @@ interface Props {
   circuitCount: number;
   circuitRating: number;
   isThreePhase: boolean;
+  pduCols: number;
 }
 
 const U_HEIGHT_PX = 30; // Reduced from 45
@@ -26,9 +27,6 @@ const RACK_HEADER_HEIGHT = 16;
 
 // Layout Constants (Pixels)
 const TABLE_WIDTH = 300; // New summary table on the left
-const PDU_COL_WIDTH = 80; 
-const PDU_WIDTH = 60; 
-const RACK_WIDTH = 420;
 const WIRE_GAP = 120;
 const PDU_VERTICAL_GAP = 20;
 const TOP_OFFSET = 60; // Space for Rack Name Header
@@ -56,7 +54,7 @@ const THEME = {
   rail: 'bg-slate-950' // Dark rails
 };
 
-const SocketIcon = ({ type, used, label, hovered }: { type: SocketType, used: boolean, label: string, hovered: boolean }) => {
+const SocketIcon = ({ type, used, label, hovered, labelSide = 'left' }: { type: SocketType, used: boolean, label: string, hovered: boolean, labelSide?: 'left' | 'right' }) => {
     let borderColor = 'border-slate-600';
     let bgColor = 'bg-slate-800';
     let ring = '';
@@ -78,6 +76,10 @@ const SocketIcon = ({ type, used, label, hovered }: { type: SocketType, used: bo
     `;
 
     const style = { height: `${SOCKET_H}px`, width: '28px' };
+    
+    const labelClass = labelSide === 'left' 
+        ? "absolute -left-8 text-[8px] text-slate-400 w-6 text-right font-mono"
+        : "absolute -right-8 text-[8px] text-slate-400 w-6 text-left font-mono";
 
     if (type === 'UK') {
         return (
@@ -87,7 +89,7 @@ const SocketIcon = ({ type, used, label, hovered }: { type: SocketType, used: bo
                     <div className={`w-[2px] h-[3px] ${pinColorClass(used)} rounded-sm`}></div>
                     <div className={`w-[2px] h-[3px] ${pinColorClass(used)} rounded-sm`}></div>
                 </div>
-                <span className="absolute -left-8 text-[8px] text-slate-400 w-6 text-right font-mono">{label}</span>
+                <span className={labelClass}>{label}</span>
             </div>
         );
     }
@@ -99,7 +101,7 @@ const SocketIcon = ({ type, used, label, hovered }: { type: SocketType, used: bo
                     <div className={`w-[2px] h-[2px] ${pinColorClass(used)} rounded-full`}></div>
                     <div className={`w-[2px] h-[2px] ${pinColorClass(used)} rounded-full`}></div>
                 </div>
-                <span className="absolute -left-8 text-[8px] text-slate-400 w-6 text-right font-mono">{label}</span>
+                <span className={labelClass}>{label}</span>
             </div>
          );
     }
@@ -110,7 +112,7 @@ const SocketIcon = ({ type, used, label, hovered }: { type: SocketType, used: bo
                 <div className={`w-[2px] h-[3px] ${pinColorClass(used)}`}></div>
                 <div className={`w-[2px] h-[3px] ${pinColorClass(used)}`}></div>
              </div>
-             <span className="absolute -left-8 text-[8px] text-slate-400 w-6 text-right font-mono">{label}</span>
+             <span className={labelClass}>{label}</span>
         </div>
     );
 };
@@ -130,11 +132,17 @@ const RackVisualizer: React.FC<Props> = ({
   voltage,
   circuitCount,
   circuitRating,
-  isThreePhase
+  isThreePhase,
+  pduCols
 }) => {
   const [draggedDevice, setDraggedDevice] = useState<string | null>(null);
   const [draggedCable, setDraggedCable] = useState<{deviceId: string, psuIndex: number} | null>(null);
   const [hoveredSocket, setHoveredSocket] = useState<{pduId: string, index: number} | null>(null);
+
+  // Dynamic Layout Constants
+  const currentPduWidth = pduCols === 2 ? 90 : 60;
+  const currentPduColWidth = pduCols === 2 ? 110 : 80;
+  const RACK_WIDTH = 420;
 
   // Derive RACK HEIGHT based on prop
   const rackHeightPx = (rackSize * U_HEIGHT_PX) + (RACK_HEADER_HEIGHT * 2);
@@ -147,25 +155,32 @@ const RackVisualizer: React.FC<Props> = ({
   // --- Layout Calculations ---
   
   // Shift everything by TABLE_WIDTH
-  const rackLeftX = TABLE_WIDTH + PDU_COL_WIDTH + WIRE_GAP;
+  const rackLeftX = TABLE_WIDTH + currentPduColWidth + WIRE_GAP;
   const rackRightX = rackLeftX + RACK_WIDTH;
-  const totalWidth = rackRightX + WIRE_GAP + PDU_COL_WIDTH;
+  const totalWidth = rackRightX + WIRE_GAP + currentPduColWidth;
 
   const getPDUHeight = (socketCount: number) => {
-      const contentH = (socketCount * SOCKET_H) + ((socketCount - 1) * SOCKET_GAP);
-      
-      // Calculate Circuit Header Overhead
       const socketsPerCircuit = Math.ceil(socketCount / circuitCount);
-      let headerCount = 0;
-      for(let i=0; i<socketCount; i++) {
-         if (i === 0 || (i > 0 && i % socketsPerCircuit === 0)) {
-             headerCount++;
-         }
+      const rows = Math.ceil(socketCount / pduCols);
+      
+      let h = PDU_HEADER_H + SOCKET_PADDING;
+      
+      for(let r=0; r<rows; r++) {
+          const firstS = r * pduCols;
+          // Check for circuit header
+          // Note: Logic must match render loop EXACTLY
+          const isStartCircuit = (firstS === 0) || (firstS > 0 && firstS % socketsPerCircuit === 0);
+          
+          if (isStartCircuit) {
+              h += CIRCUIT_HEADER_HEIGHT + CIRCUIT_HEADER_MARGIN;
+          }
+          
+          h += SOCKET_H;
+          if (r < rows - 1) h += SOCKET_GAP;
       }
       
-      const headersH = headerCount * (CIRCUIT_HEADER_HEIGHT + CIRCUIT_HEADER_MARGIN);
-
-      return PDU_HEADER_H + SOCKET_PADDING + contentH + headersH + SOCKET_PADDING + PDU_FOOTER_H;
+      h += SOCKET_PADDING + PDU_FOOTER_H;
+      return h;
   };
 
   const getGroupStartY = (groupPdus: PDUConfig[]) => {
@@ -198,11 +213,48 @@ const RackVisualizer: React.FC<Props> = ({
 
       // X calculation includes TABLE_WIDTH shift
       const x = isA 
-        ? TABLE_WIDTH + (PDU_COL_WIDTH - PDU_WIDTH) / 2
-        : rackRightX + WIRE_GAP + ((PDU_COL_WIDTH - PDU_WIDTH) / 2);
+        ? TABLE_WIDTH + (currentPduColWidth - currentPduWidth) / 2
+        : rackRightX + WIRE_GAP + ((currentPduColWidth - currentPduWidth) / 2);
 
       // Add TOP_OFFSET to y
-      return { x, y: y + TOP_OFFSET, width: PDU_WIDTH, height: getPDUHeight(totalSockets) };
+      return { x, y: y + TOP_OFFSET, width: currentPduWidth, height: getPDUHeight(totalSockets) };
+  };
+
+  const getSocketPosition = (pdu: PDUConfig, socketIndex: number) => {
+      const rect = getPDURect(pdu); // Base PDU rect
+      
+      const totalSockets = pdu.socketCount + (pdu.secondarySocketCount || 0);
+      const socketsPerCircuit = Math.ceil(totalSockets / circuitCount);
+      
+      let currentY = PDU_HEADER_H + SOCKET_PADDING;
+      const targetRow = Math.floor(socketIndex / pduCols);
+      
+      for(let r=0; r<targetRow; r++) {
+           const firstS = r * pduCols;
+           const isStart = (firstS === 0) || (firstS > 0 && firstS % socketsPerCircuit === 0);
+           if (isStart) currentY += CIRCUIT_HEADER_HEIGHT + CIRCUIT_HEADER_MARGIN;
+           
+           currentY += SOCKET_H + SOCKET_GAP;
+      }
+      
+      // Add header for target row if applicable
+      const firstS = targetRow * pduCols;
+      const isStart = (firstS === 0) || (firstS > 0 && firstS % socketsPerCircuit === 0);
+      if (isStart) currentY += CIRCUIT_HEADER_HEIGHT + CIRCUIT_HEADER_MARGIN;
+
+      // Y is centered in the socket height
+      const y = rect.y + currentY + (SOCKET_H / 2);
+      
+      // X calculation
+      const colIndex = socketIndex % pduCols;
+      
+      let xOffset = 0;
+      if (pduCols === 2) {
+          xOffset = colIndex === 0 ? -16 : 16; // 14px half width + 2px gap
+      }
+      const x = rect.x + (rect.width / 2) + xOffset;
+      
+      return { x, y };
   };
 
   // --- Drag & Drop (Unchanged logic) ---
@@ -326,6 +378,10 @@ const RackVisualizer: React.FC<Props> = ({
                             <tr>
                                 <td className="p-2 font-semibold text-slate-600">Voltage</td>
                                 <td className="p-2 font-mono text-slate-800">{voltage} V</td>
+                            </tr>
+                            <tr>
+                                <td className="p-2 font-semibold text-slate-600">Columns</td>
+                                <td className="p-2 font-mono text-slate-800">{pduCols}</td>
                             </tr>
                         </tbody>
                     </table>
@@ -495,7 +551,7 @@ const RackVisualizer: React.FC<Props> = ({
     return slots;
   };
 
-  const renderSocket = (pdu: PDUConfig, index: number, circuitIdx: number, isCircuitOverloaded: boolean, isLast: boolean) => {
+  const renderSocket = (pdu: PDUConfig, index: number, circuitIdx: number, isCircuitOverloaded: boolean, isLast: boolean, colIndex: number = 0) => {
       let connectedDevice: Device | undefined;
       let connectedPsuIndex: number = -1;
 
@@ -529,11 +585,17 @@ const RackVisualizer: React.FC<Props> = ({
             onDragLeave={() => setHoveredSocket(null)}
             onDrop={(e) => handleSocketDrop(e, pdu.id, index, isOccupied)}
             className={`flex items-center flex-shrink-0 relative ${isOccupied ? 'cursor-grab active:cursor-grabbing' : ''} ${isCircuitOverloaded ? 'bg-red-900/10 rounded px-1 -mx-1' : ''}`}
-            style={{ marginBottom: `${isLast ? 0 : SOCKET_GAP}px` }}
+            style={{ marginBottom: 0 }} // Managed by parent row
         >
            {/* Circuit Warning Marker */}
            {isCircuitOverloaded && <div className="absolute -left-2 top-1 w-1 h-1 bg-red-500 rounded-full"></div>}
-           <SocketIcon type={currentType} used={isOccupied} label={`${index+1}`} hovered={isHovered} />
+           <SocketIcon 
+               type={currentType} 
+               used={isOccupied} 
+               label={`${index+1}`} 
+               hovered={isHovered} 
+               labelSide={colIndex === 1 ? 'right' : 'left'}
+           />
         </div>
       );
   };
@@ -555,25 +617,12 @@ const RackVisualizer: React.FC<Props> = ({
             const pdu = pdus.find(p => p.id === conn.pduId);
             if (!pdu) return;
 
-            const pduRect = getPDURect(pdu);
+            // Use updated logic for exact coordinates
+            const socketPos = getSocketPosition(pdu, conn.socketIndex);
+            const socketY = socketPos.y;
+            const pduCenterX = socketPos.x;
             
-            const totalSockets = pdu.socketCount + (pdu.secondarySocketCount || 0);
-            const socketsPerCircuit = Math.ceil(totalSockets / circuitCount);
-            
-            // Fixed Wire Geometry Logic to account for Circuit Headers
-            // Header Logic matches `renderSocket` loop
-            const headerCount = Math.floor(conn.socketIndex / socketsPerCircuit) + 1;
-            const headerOffset = headerCount * (CIRCUIT_HEADER_HEIGHT + CIRCUIT_HEADER_MARGIN);
-
-            const socketRelativeY = PDU_HEADER_H + SOCKET_PADDING + 
-                                    (conn.socketIndex * (SOCKET_H + SOCKET_GAP)) + 
-                                    headerOffset + 
-                                    (SOCKET_H / 2);
-            
-            const socketY = pduRect.y + socketRelativeY;
-            const pduCenterX = pduRect.x + (pduRect.width / 2);
             const deviceX = pdu.side === 'A' ? rackLeftX : rackRightX;
-
             const dist = Math.abs(deviceX - pduCenterX);
             const cp1X = deviceX + (pdu.side === 'A' ? -dist * 0.5 : dist * 0.5);
             const cp2X = pduCenterX; 
@@ -664,6 +713,9 @@ const RackVisualizer: React.FC<Props> = ({
              });
           });
 
+          // Calculate total rows needed
+          const rows = Math.ceil(totalSockets / pduCols);
+
           return (
             <React.Fragment key={pdu.id}>
                 <div 
@@ -685,26 +737,39 @@ const RackVisualizer: React.FC<Props> = ({
                             <span>{pdu.id}</span>
                         </div>
                         
-                        {/* Sockets */}
+                        {/* Sockets Container */}
                         <div className="flex-1 w-full flex flex-col items-center relative" style={{ padding: `${SOCKET_PADDING}px 0` }}>
-                            {Array.from({ length: totalSockets }).map((_, i) => {
-                                const cIdx = Math.floor(i / socketsPerCircuit);
-                                const cLoadWatts = circuitLoads[cIdx] || 0;
-                                // Convert W -> VA -> Amps
-                                const cAmps = (cLoadWatts / powerFactor) / voltage;
-                                const isCOver = cAmps > circuitRating;
+                            {Array.from({ length: rows }).map((_, rIdx) => {
+                                const firstSIdx = rIdx * pduCols;
+                                const cIdx = Math.floor(firstSIdx / socketsPerCircuit);
                                 
-                                const isStartOfCircuit = i > 0 && i % socketsPerCircuit === 0;
-                                const isFirst = i === 0;
+                                // Determine if this row starts a circuit section
+                                const isStartOfCircuit = (firstSIdx === 0) || (firstSIdx > 0 && firstSIdx % socketsPerCircuit === 0);
+
+                                const cLoadWatts = circuitLoads[cIdx] || 0;
+                                const cAmps = (cLoadWatts / powerFactor) / voltage;
                                 const label = isThreePhase ? `L${(cIdx % 3) + 1}` : `C${cIdx + 1}`;
                                 const cPct = Math.min(100, (cAmps / circuitRating) * 100);
                                 const barColor = cAmps > circuitRating ? 'bg-red-500' : (cPct > 80 ? 'bg-amber-500' : 'bg-emerald-500');
 
+                                // Gather sockets for this row
+                                const rowSockets = [];
+                                for (let c = 0; c < pduCols; c++) {
+                                    const sIdx = firstSIdx + c;
+                                    if (sIdx < totalSockets) {
+                                        const sCIdx = Math.floor(sIdx / socketsPerCircuit);
+                                        const sCLoadWatts = circuitLoads[sCIdx] || 0;
+                                        const sCAmps = (sCLoadWatts / powerFactor) / voltage;
+                                        const isCOver = sCAmps > circuitRating;
+                                        rowSockets.push({ idx: sIdx, cIdx: sCIdx, isOver: isCOver });
+                                    }
+                                }
+
                                 return (
-                                    <React.Fragment key={i}>
-                                        {(isStartOfCircuit || isFirst) && (
+                                    <React.Fragment key={rIdx}>
+                                        {isStartOfCircuit && (
                                             <div 
-                                                className="w-full mb-1 flex flex-col justify-center bg-slate-900 border-y border-slate-700 relative overflow-hidden" 
+                                                className="w-full mb-1 flex flex-col justify-center bg-slate-900 border-y border-slate-700 relative overflow-hidden shrink-0" 
                                                 style={{ height: `${CIRCUIT_HEADER_HEIGHT}px` }}
                                             >
                                                 {/* Text Info */}
@@ -721,7 +786,16 @@ const RackVisualizer: React.FC<Props> = ({
                                                 </div>
                                             </div>
                                         )}
-                                        {renderSocket(pdu, i, cIdx, isCOver, i === totalSockets - 1)}
+                                        
+                                        {/* Socket Row */}
+                                        <div 
+                                            className="w-full flex justify-center gap-1 shrink-0"
+                                            style={{ height: SOCKET_H, marginBottom: rIdx < rows - 1 ? SOCKET_GAP : 0 }}
+                                        >
+                                            {rowSockets.map((s, cIdx) => (
+                                                renderSocket(pdu, s.idx, s.cIdx, s.isOver, false, cIdx)
+                                            ))}
+                                        </div>
                                     </React.Fragment>
                                 );
                             })}

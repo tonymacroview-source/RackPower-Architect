@@ -36,6 +36,7 @@ const Dashboard: React.FC = () => {
   const [tempSecondarySockets, setTempSecondarySockets] = useState<number | string>(4);
 
   const [manualPduPairs, setManualPduPairs] = useState<number | null>(null);
+  const [pduCols, setPduCols] = useState<number>(1); // New State for PDU Columns
 
   const [pduPhysicalHeight, setPduPhysicalHeight] = useState<number>(180); // cm
   const [pduPhysicalWidth, setPduPhysicalWidth] = useState<number>(5.5); // cm
@@ -135,8 +136,11 @@ const Dashboard: React.FC = () => {
       totalSocketsPerPDU: number, 
       rackSizeU: number
   ) => {
+      // Logic duplicated from RackVisualizer for consistency
+      // Simplified estimation for auto-patching
       const getPDUHeight = (socketCount: number) => {
-          const contentH = (socketCount * SOCKET_H) + ((socketCount - 1) * SOCKET_GAP);
+          const rows = Math.ceil(socketCount / pduCols);
+          const contentH = (rows * SOCKET_H) + ((rows - 1) * SOCKET_GAP);
           return PDU_HEADER_H + SOCKET_PADDING + contentH + SOCKET_PADDING + PDU_FOOTER_H;
       };
       const singlePduHeight = getPDUHeight(totalSocketsPerPDU);
@@ -146,7 +150,10 @@ const Dashboard: React.FC = () => {
       const startY = Math.max(0, (rackHeightPx - totalGroupHeight) / 2);
 
       const pduTopY = startY + pduIndex * (singlePduHeight + PDU_VERTICAL_GAP);
-      const socketOffset = PDU_HEADER_H + SOCKET_PADDING + (socketIndex * (SOCKET_H + SOCKET_GAP)) + (SOCKET_H / 2);
+      
+      // Calculate specific row Y
+      const row = Math.floor(socketIndex / pduCols);
+      const socketOffset = PDU_HEADER_H + SOCKET_PADDING + (row * (SOCKET_H + SOCKET_GAP)) + (SOCKET_H / 2);
       
       return pduTopY + socketOffset;
   };
@@ -647,6 +654,7 @@ const Dashboard: React.FC = () => {
                     if (config.rackSize) { setRackSize(config.rackSize); setTempRackSize(config.rackSize); }
                     if (config.baseSocketsPerPDU) { setBaseSocketsPerPDU(config.baseSocketsPerPDU); setTempSockets(config.baseSocketsPerPDU); }
                     if (config.secondarySocketsPerPDU !== undefined) { setSecondarySocketsPerPDU(config.secondarySocketsPerPDU); setTempSecondarySockets(config.secondarySocketsPerPDU); }
+                    if (config.pduCols) setPduCols(config.pduCols);
                     if (config.pduPhysicalHeight) setPduPhysicalHeight(config.pduPhysicalHeight);
                     if (config.pduPhysicalWidth) setPduPhysicalWidth(config.pduPhysicalWidth);
                     if (config.pduCordLength) setPduCordLength(config.pduCordLength);
@@ -689,6 +697,7 @@ const Dashboard: React.FC = () => {
       setRackSize(48);
       setTempRackSize(48);
       setManualPduPairs(null);
+      setPduCols(1);
       
       setPduVoltage(230);
       setTempPduVoltage(230);
@@ -717,6 +726,7 @@ const Dashboard: React.FC = () => {
         rackSize,
         baseSocketsPerPDU,
         secondarySocketsPerPDU,
+        pduCols,
         pduPhysicalHeight,
         pduPhysicalWidth,
         pduCordLength,
@@ -1257,6 +1267,16 @@ const Dashboard: React.FC = () => {
                                 />
                             </div>
                         </div>
+                         <div className="mt-2 border-t border-slate-700 pt-2">
+                            <label className="text-xs text-slate-400 uppercase font-bold">PDU Layout</label>
+                            <select 
+                                value={pduCols} onChange={e => setPduCols(Number(e.target.value))}
+                                className="w-full bg-slate-800 border border-slate-700 rounded p-2 mt-1 text-sm"
+                            >
+                                <option value={1}>Single Column (Standard)</option>
+                                <option value={2}>Double Column (Wide)</option>
+                            </select>
+                        </div>
                     </div>
                     <div>
                         <label className="text-xs text-slate-400 uppercase font-bold">Cord Length (m)</label>
@@ -1331,6 +1351,7 @@ const Dashboard: React.FC = () => {
                         circuitCount={pduCircuitCount}
                         circuitRating={pduCircuitAmps}
                         isThreePhase={isThreePhase}
+                        pduCols={pduCols}
                      />
                  ) : (
                      <div className="text-slate-500 mt-20 text-center w-[600px]">No devices loaded. Upload a CSV to begin.</div>
